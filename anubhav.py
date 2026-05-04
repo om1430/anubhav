@@ -24,14 +24,19 @@ st.set_page_config(page_title="Smart PDF Cleaner", layout="wide")
 
 st.title("📄 Smart PDF Field Remover")
 
-uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
+# ✅ MULTIPLE FILE UPLOAD
+uploaded_files = st.file_uploader(
+    "Upload PDF",
+    type=["pdf"],
+    accept_multiple_files=True
+)
 
 remove_barcode = st.checkbox("Remove Barcode (optional)", value=False)
 
 # =========================
 # SETTINGS
 # =========================
-LEFT_LIMIT = 0.55  # ✅ keeps right-side PAN block safe
+LEFT_LIMIT = 0.55
 
 REMOVE_KEYWORDS = [
     "ASPEN",
@@ -49,7 +54,7 @@ def clean_pdf(file, remove_barcode):
 
     for page in doc:
 
-        # 🔹 Remove only LEFT side content
+        # Remove LEFT side content only
         for keyword in REMOVE_KEYWORDS:
             areas = page.search_for(keyword)
 
@@ -57,12 +62,12 @@ def clean_pdf(file, remove_barcode):
                 expanded = fitz.Rect(
                     max(0, rect.x0 - 5),
                     max(0, rect.y0 - 2),
-                    page.rect.width * LEFT_LIMIT,  # ✅ restrict width
+                    page.rect.width * LEFT_LIMIT,
                     min(page.rect.height, rect.y1 + 5)
                 )
                 page.add_redact_annot(expanded, fill=(1, 1, 1))
 
-        # 🔹 Optional barcode removal (top-right only)
+        # Optional barcode removal
         if remove_barcode:
             barcode_area = fitz.Rect(
                 page.rect.width * 0.6,
@@ -84,43 +89,45 @@ def clean_pdf(file, remove_barcode):
 # =========================
 # MAIN FLOW
 # =========================
-if uploaded_file:
+if uploaded_files:
 
-    # Validation
-    if uploaded_file.type != "application/pdf":
-        st.error("❌ Only PDF allowed")
-        st.stop()
-
-    if uploaded_file.size > 5 * 1024 * 1024:
-        st.error("❌ Max file size is 5MB")
-        st.stop()
-
-    st.success("✅ PDF Uploaded")
+    st.success(f"✅ {len(uploaded_files)} PDFs Uploaded")
 
     if st.button("🚀 Clean PDF"):
-        try:
-            cleaned_pdf = clean_pdf(uploaded_file, remove_barcode)
 
-            st.success("✅ Fields Removed Successfully")
+        for uploaded_file in uploaded_files:
+            try:
+                # Validation
+                if uploaded_file.type != "application/pdf":
+                    st.error(f"❌ {uploaded_file.name} is not a PDF")
+                    continue
 
-            # Preview
-            preview_doc = fitz.open(stream=cleaned_pdf.getvalue(), filetype="pdf")
-            page = preview_doc[0]
-            pix = page.get_pixmap()
+                if uploaded_file.size > 5 * 1024 * 1024:
+                    st.error(f"❌ {uploaded_file.name} too large (Max 5MB)")
+                    continue
 
-            st.image(pix.tobytes(), caption="Preview", use_container_width=True)
+                cleaned_pdf = clean_pdf(uploaded_file, remove_barcode)
 
-            # Download
+                st.success(f"✔ Processed: {uploaded_file.name}")
 
-            # Get original filename
-            original_name = uploaded_file.name
+                # Preview first page
+                preview_doc = fitz.open(stream=cleaned_pdf.getvalue(), filetype="pdf")
+                page = preview_doc[0]
+                pix = page.get_pixmap()
 
-            st.download_button(
-                "📥 Download Cleaned PDF",
-                cleaned_pdf,
-                file_name=original_name,  # ✅ same name
-                mime="application/pdf"
-            )
-        
-        except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
+                st.image(
+                    pix.tobytes(),
+                    caption=f"Preview: {uploaded_file.name}",
+                    use_container_width=True
+                )
+
+                # Download button (same name)
+                st.download_button(
+                    label=f"📥 Download {uploaded_file.name}",
+                    data=cleaned_pdf,
+                    file_name=uploaded_file.name,
+                    mime="application/pdf"
+                )
+
+            except Exception as e:
+                st.error(f"❌ Error in {uploaded_file.name}: {str(e)}")
