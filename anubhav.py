@@ -2,6 +2,24 @@ import streamlit as st
 import fitz  # PyMuPDF
 import io
 
+# =========================
+# 🔐 PASSWORD CONFIG
+# =========================
+APP_PASSWORD = "mlc123"
+
+def check_password():
+    st.sidebar.title("🔐 Login")
+    password = st.sidebar.text_input("Enter Password", type="password")
+
+    if password != APP_PASSWORD:
+        st.warning("Enter correct password")
+        st.stop()
+
+check_password()
+
+# =========================
+# UI
+# =========================
 st.set_page_config(page_title="Smart PDF Cleaner", layout="wide")
 
 st.title("📄 Smart PDF Field Remover")
@@ -10,25 +28,29 @@ uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
 
 remove_barcode = st.checkbox("Remove Barcode (optional)", value=False)
 
-# Keywords to remove
+# =========================
+# KEYWORDS TO REMOVE
+# =========================
 REMOVE_KEYWORDS = [
-    "ASPEN",
+    "- ASPEN",
     "Doctor ID",
     "Office :",
     "Route :"
 ]
 
+# =========================
+# PROCESS FUNCTION
+# =========================
 def clean_pdf(file, remove_barcode):
     file_bytes = file.read()
     doc = fitz.open(stream=file_bytes, filetype="pdf")
 
     for page in doc:
-        # 🔹 Remove text fields
+        # 🔹 Remove specific text lines
         for keyword in REMOVE_KEYWORDS:
             areas = page.search_for(keyword)
 
             for rect in areas:
-                # Expand box to cover full line
                 expanded = fitz.Rect(
                     rect.x0 - 5,
                     rect.y0 - 2,
@@ -37,10 +59,10 @@ def clean_pdf(file, remove_barcode):
                 )
                 page.add_redact_annot(expanded, fill=(1, 1, 1))
 
-        # 🔹 Remove barcode (top area)
+        # 🔹 Optional barcode removal
         if remove_barcode:
             barcode_area = fitz.Rect(
-                page.rect.width * 0.5,  # right side
+                page.rect.width * 0.5,
                 0,
                 page.rect.width,
                 page.rect.height * 0.15
@@ -56,25 +78,41 @@ def clean_pdf(file, remove_barcode):
 
     return output
 
-
+# =========================
+# MAIN FLOW
+# =========================
 if uploaded_file:
+    # Validation
+    if uploaded_file.type != "application/pdf":
+        st.error("❌ Only PDF allowed")
+        st.stop()
+
+    if uploaded_file.size > 5 * 1024 * 1024:
+        st.error("❌ Max file size is 5MB")
+        st.stop()
+
     st.success("✅ PDF Uploaded")
 
     if st.button("🚀 Clean PDF"):
-        cleaned_pdf = clean_pdf(uploaded_file, remove_barcode)
+        try:
+            cleaned_pdf = clean_pdf(uploaded_file, remove_barcode)
 
-        st.success("✅ Fields Removed Successfully")
+            st.success("✅ Fields Removed Successfully")
 
-        # Preview
-        preview_doc = fitz.open(stream=cleaned_pdf.getvalue(), filetype="pdf")
-        pix = preview_doc[0].get_pixmap()
+            # Preview
+            preview_doc = fitz.open(stream=cleaned_pdf.getvalue(), filetype="pdf")
+            page = preview_doc[0]
+            pix = page.get_pixmap()
 
-        st.image(pix.tobytes(), caption="Preview", use_container_width=True)
+            st.image(pix.tobytes(), caption="Preview", use_container_width=True)
 
-        # Download
-        st.download_button(
-            "📥 Download Cleaned PDF",
-            cleaned_pdf,
-            file_name="cleaned.pdf",
-            mime="application/pdf"
-        )
+            # Download
+            st.download_button(
+                "📥 Download Cleaned PDF",
+                cleaned_pdf,
+                file_name="cleaned.pdf",
+                mime="application/pdf"
+            )
+
+        except Exception as e:
+            st.error(f"❌ Error: {str(e)}")
