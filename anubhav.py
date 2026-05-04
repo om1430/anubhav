@@ -1,6 +1,7 @@
 import streamlit as st
 import fitz  # PyMuPDF
 import io
+import zipfile
 
 # =========================
 # 🔐 PASSWORD
@@ -12,7 +13,6 @@ def check_password():
     password = st.sidebar.text_input("Enter Password", type="password")
 
     if password != APP_PASSWORD:
-        st.warning("Enter correct password")
         st.stop()
 
 check_password()
@@ -20,22 +20,18 @@ check_password()
 # =========================
 # UI
 # =========================
-st.set_page_config(page_title="Smart PDF Cleaner", layout="wide")
+st.set_page_config(page_title="PDF Cleaner", layout="wide")
 
-st.title("📄 Smart PDF Field Remover")
+st.title("📄 Multi PDF Cleaner")
 
-# ✅ MULTIPLE FILE UPLOAD
 uploaded_files = st.file_uploader(
-    "Upload PDF",
+    "Upload PDFs",
     type=["pdf"],
     accept_multiple_files=True
 )
 
-remove_barcode = st.checkbox("Remove Barcode (optional)", value=False)
+remove_barcode = st.checkbox("Remove Barcode", value=False)
 
-# =========================
-# SETTINGS
-# =========================
 LEFT_LIMIT = 0.55
 
 REMOVE_KEYWORDS = [
@@ -49,25 +45,21 @@ REMOVE_KEYWORDS = [
 # PROCESS FUNCTION
 # =========================
 def clean_pdf(file, remove_barcode):
-    file_bytes = file.read()
-    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    doc = fitz.open(stream=file.read(), filetype="pdf")
 
     for page in doc:
-
-        # Remove LEFT side content only
         for keyword in REMOVE_KEYWORDS:
             areas = page.search_for(keyword)
 
             for rect in areas:
                 expanded = fitz.Rect(
-                    max(0, rect.x0 - 5),
-                    max(0, rect.y0 - 2),
+                    rect.x0 - 5,
+                    rect.y0 - 2,
                     page.rect.width * LEFT_LIMIT,
-                    min(page.rect.height, rect.y1 + 5)
+                    rect.y1 + 5
                 )
                 page.add_redact_annot(expanded, fill=(1, 1, 1))
 
-        # Optional barcode removal
         if remove_barcode:
             barcode_area = fitz.Rect(
                 page.rect.width * 0.6,
@@ -79,55 +71,46 @@ def clean_pdf(file, remove_barcode):
 
         page.apply_redactions()
 
-    output = io.BytesIO()
-    doc.save(output)
+    buffer = io.BytesIO()
+    doc.save(buffer)
     doc.close()
-    output.seek(0)
+    buffer.seek(0)
 
-    return output
+    return buffer
+
 
 # =========================
-# MAIN FLOW
+# MAIN
 # =========================
 if uploaded_files:
 
-    st.success(f"✅ {len(uploaded_files)} PDFs Uploaded")
+    st.success(f"✅ {len(uploaded_files)} PDFs uploaded")
 
-    if st.button("🚀 Clean PDF"):
+    if st.button("🚀 Process All PDFs"):
 
-        for uploaded_file in uploaded_files:
-            try:
-                # Validation
-                if uploaded_file.type != "application/pdf":
-                    st.error(f"❌ {uploaded_file.name} is not a PDF")
-                    continue
+        zip_buffer = io.BytesIO()
+        zip_file = zipfile.ZipFile(zip_buffer, "w")
 
-                if uploaded_file.size > 5 * 1024 * 1024:
-                    st.error(f"❌ {uploaded_file.name} too large (Max 5MB)")
-                    continue
+        for file in uploaded_files:
 
-                cleaned_pdf = clean_pdf(uploaded_file, remove_barcode)
+            # Validation
+            if file.type != "application/pdf":
+                st.warning(f"Skipped {file.name} (not PDF)")
+                continue
 
-                st.success(f"✔ Processed: {uploaded_file.name}")
+            cleaned_pdf = clean_pdf(file, remove_barcode)
 
-                # Preview first page
-                preview_doc = fitz.open(stream=cleaned_pdf.getvalue(), filetype="pdf")
-                page = preview_doc[0]
-                pix = page.get_pixmap()
+            # Add to zip (same name)
+            zip_file.writestr(file.name, cleaned_pdf.getvalue())
 
-                st.image(
-                    pix.tobytes(),
-                    caption=f"Preview: {uploaded_file.name}",
-                    use_container_width=True
-                )
+        zip_file.close()
+        zip_buffer.seek(0)
 
-                # Download button (same name)
-                st.download_button(
-                    label=f"📥 Download {uploaded_file.name}",
-                    data=cleaned_pdf,
-                    file_name=uploaded_file.name,
-                    mime="application/pdf"
-                )
+        st.success("✅ All PDFs processed!")
 
-            except Exception as e:
-                st.error(f"❌ Error in {uploaded_file.name}: {str(e)}")
+        st.download_button(
+            label="📥 Download All (ZIP)",
+            data=zip_buffer,
+            file_name="cleaned_pdfs.zip",
+            mime="application/zip"
+        )
