@@ -3,7 +3,7 @@ import fitz  # PyMuPDF
 import io
 
 # =========================
-# 🔐 PASSWORD CONFIG
+# 🔐 PASSWORD
 # =========================
 APP_PASSWORD = "mlc123"
 
@@ -29,10 +29,12 @@ uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
 remove_barcode = st.checkbox("Remove Barcode (optional)", value=False)
 
 # =========================
-# KEYWORDS TO REMOVE
+# SETTINGS
 # =========================
+LEFT_LIMIT = 0.55  # ✅ keeps right-side PAN block safe
+
 REMOVE_KEYWORDS = [
-    "- ASPEN",
+    "ASPEN",
     "Doctor ID",
     "Office :",
     "Route :"
@@ -46,23 +48,24 @@ def clean_pdf(file, remove_barcode):
     doc = fitz.open(stream=file_bytes, filetype="pdf")
 
     for page in doc:
-        # 🔹 Remove specific text lines
+
+        # 🔹 Remove only LEFT side content
         for keyword in REMOVE_KEYWORDS:
             areas = page.search_for(keyword)
 
             for rect in areas:
                 expanded = fitz.Rect(
-                    rect.x0 - 5,
-                    rect.y0 - 2,
-                    page.rect.width,
-                    rect.y1 + 5
+                    max(0, rect.x0 - 5),
+                    max(0, rect.y0 - 2),
+                    page.rect.width * LEFT_LIMIT,  # ✅ restrict width
+                    min(page.rect.height, rect.y1 + 5)
                 )
                 page.add_redact_annot(expanded, fill=(1, 1, 1))
 
-        # 🔹 Optional barcode removal
+        # 🔹 Optional barcode removal (top-right only)
         if remove_barcode:
             barcode_area = fitz.Rect(
-                page.rect.width * 0.5,
+                page.rect.width * 0.6,
                 0,
                 page.rect.width,
                 page.rect.height * 0.15
@@ -82,6 +85,7 @@ def clean_pdf(file, remove_barcode):
 # MAIN FLOW
 # =========================
 if uploaded_file:
+
     # Validation
     if uploaded_file.type != "application/pdf":
         st.error("❌ Only PDF allowed")
