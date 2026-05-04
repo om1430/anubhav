@@ -5,8 +5,7 @@ import io
 # =========================
 # 🔐 PASSWORD
 # =========================
-
-APP_PASSWORD = "abc123"
+APP_PASSWORD = "mlc123"
 
 def check_password():
     st.sidebar.title("🔐 Login")
@@ -112,13 +111,16 @@ if uploaded_file:
             st.image(pix.tobytes(), caption="Preview", use_container_width=True)
 
             # Download
+
+            # Get original filename
+            original_name = uploaded_file.name
+
             st.download_button(
                 "📥 Download Cleaned PDF",
                 cleaned_pdf,
-                file_name=uploaded_file.name,  # ✅ same name
+                file_name=original_name,  # ✅ same name
                 mime="application/pdf"
             )
-
         
         except Exception as e:
             st.error(f"❌ Error: {str(e)}")
