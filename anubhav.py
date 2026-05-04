@@ -5,7 +5,7 @@ import io
 # =========================
 # 🔐 PASSWORD
 # =========================
-APP_PASSWORD = "mlc123"
+
 
 def check_password():
     st.sidebar.title("🔐 Login")
